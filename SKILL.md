@@ -1,97 +1,125 @@
 ---
 name: skill-advisor
 description: >
-  分析 skill 生態系健康度並提供改善建議。
-  觸發：「分析 skill 健康度」「skill advisor」「skill 健康報告」「analyze skills」「skill health」。
-  Use when user wants to audit their skills, reduce token waste, find redundant skills, or improve trigger quality.
-  NOT for: 建立或編輯 skill（用 skill-creator）、搜尋 skill 內容。
+  Skill 衛生工具：分析已安裝的 skill 生態系，找出重疊、衝突、可刪除、可精簡的 skill，
+  用互動式 Action Cards 引導使用者逐一清理。
+  觸發：「分析 skill」「skill 清理」「skill advisor」「analyze skills」「skill health」
+  「太多 skill 了」「整理 skill」「skill 去重」。
+  Use when user has accumulated many skills and wants to optimize their skill collection.
+  Make sure to use this skill whenever the user mentions skill management, cleanup,
+  or when they're confused about which skill does what.
+  NOT for: 建立或編輯單個 skill（用 skill-creator）。
 ---
 
-# Skill Advisor
+# Skill Advisor — Skill 衛生工具
 
-分析 skill 生態系的健康狀態，產出可行動的改善建議。
+分析已安裝的所有 skill，用語意分析找出重疊和冗餘，產出 Action Cards 引導使用者逐一清理。
 
 ## 執行流程
 
-### Step 1: 確認掃描範圍
+### Step 1: 跑資料收集腳本
 
-問使用者要分析哪個 skill 目錄：
+掃描所有已安裝的 skill：
 
-- **預設**：`~/.claude/skills/`（使用者的全域 skills）
-- **指定路徑**：使用者提供的目錄
-- **多個來源**：可以跑多次合併結果
-
-如果使用者有 skill-vault（Obsidian vault 專門管理 skill），也問是否要同時產 MOC。
-
-### Step 2: 跑資料收集腳本
-
-用 Bash 工具執行分析腳本。腳本位於本 skill 的 `scripts/` 目錄下。
-
-基本掃描：
 ```bash
-node "{THIS_SKILL_DIR}/scripts/analyze-skills.mjs" --json --dir "{TARGET_DIR}"
+node "{THIS_SKILL_DIR}/scripts/analyze-skills.mjs" --json --dir "{HOME}/.claude/skills"
 ```
 
-如果要同時產 MOC（skill-vault 使用者）：
+如果使用者有專案級 skill，也一起掃：
+
 ```bash
-node "{THIS_SKILL_DIR}/scripts/analyze-skills.mjs" --json --dir "{TARGET_DIR}" --moc "{VAULT_PATH}/skill-map.md"
+node "{THIS_SKILL_DIR}/scripts/analyze-skills.mjs" --json --dir ".claude/skills"
 ```
 
-將 JSON 輸出存入變數供後續分析。
+合併兩次的 JSON 結果。
 
-### Step 3: 解讀 JSON 數據
+### Step 2: 派 subagent 做語意分析
 
-解析 JSON 輸出，重點關注：
+派一個 Sonnet subagent，傳入：
+- 所有 skill 的 name + description 全文
+- 依賴圖（skillRefs、referencedBy）
+- 孤兒標記
 
-1. **`summary`** — 總覽數據（totalSkills, orphanRate, avgTriggerScore, totalDescriptionChars, evalCoverage, overlapPairCount, refCoverage）
-2. **`skills[].trigger.issues`** — 每個 skill 的問題標籤（tag + message）
-3. **`skills[].isOrphan`** — 孤立 skill 標記
-4. **`skills[].crossRefs`** / **`skills[].referencedBy`** — 依賴關係圖
-5. **`skills[].descriptionLength`** — 各 skill 的 description 長度（用於 token 估算）
-6. **`overlaps`** — 功能重疊 pair（skills, commonKeywords, overlapPercent）
+請 subagent 分析並回傳 JSON：
 
-### Step 4: [選配] 呼叫 graph-query
+```json
+{
+  "actions": [
+    {
+      "type": "merge | remove | trim | conflict",
+      "skills": ["skill-a", "skill-b"],
+      "reason": "具體原因",
+      "suggestion": "具體建議動作",
+      "token_save_estimate": 400
+    }
+  ]
+}
+```
 
-如果使用者有 obsidian-graph-query skill 且有 skill-vault，可額外執行：
+分析任務：
+1. **語意重疊（merge）** — 哪些 skill 功能實質重疊，做的事一樣
+2. **觸發衝突（conflict）** — 哪些 skill 會對同一種 prompt 搶觸發
+3. **可刪除（remove）** — 哪些 skill 功能已被其他 skill 完全涵蓋，且無人引用
+4. **Token 肥大（trim）** — 哪些 description 可以精簡但不影響觸發
 
-1. `hubs` 查詢 — 找出被最多 skill 依賴的關鍵節點
-2. `bridges` 查詢 — 找出不能隨便砍的 bridge skill
-3. `clusters` 查詢 — 找出功能群組分布
+subagent prompt 要點：
+- 不要只看關鍵字，要理解每個 skill 實際做什麼
+- 考慮依賴關係：被其他 skill 引用的不建議刪除
+- 每個建議必須附具體理由和行動
+- 用繁體中文
 
-將結果合併到分析數據中，用於 Kill List 的安全檢查和 Health Score 的結構指標。
+### Step 3: 產出 Action Cards 並逐一互動
 
-**注意**：此步驟需要 Obsidian 正在運行且 skill-vault 已開啟。如果環境不具備，跳過此步驟，在報告中標註「結構分析未執行（需要 Obsidian + graph-query）」。
+將 actions 按 token_save_estimate 由大到小排序。
 
-### Step 5: 產出建議報告
+逐一呈現 Action Card：
 
-讀取 `references/health-metrics.md` 了解評分規則和判斷標準。
-讀取 `references/advisor-prompt.md` 了解報告格式和分析原則。
+```
+📋 Action Card [N/total]：[type 中文名]
 
-根據數據和規則，產出包含以下四個區塊的報告：
+[skill name(s)]
+原因：[reason]
+建議：[suggestion]
+預估省 token：~[token_save_estimate] 字
 
-1. **Health Score** — 綜合健康分數 0-100，附各指標明細
-2. **Kill List** — 建議移除的 skill，附信心度（🔴🟡⚪）和 token 估算
-3. **Merge List** — 建議合併的 skill pair，附合併方向和步驟
-4. **Fix List** — 建議改善的 skill，附 skill-creator 指令
+→ 接受 / 跳過 / 修改？
+```
 
-**關鍵原則**：
-- 激進列出，標信心度讓使用者篩選
-- 每個建議必須引用具體 JSON 數據
-- Kill 和 Merge 必須估算能省多少 token
-- Fix List 必須附可執行的行動指令
-- Kill List 要檢查 referencedBy，有被引用的降低信心度
+type 中文對照：
+- merge → 去重
+- remove → 移除
+- trim → 精簡
+- conflict → 衝突
 
-### Step 6: 報告交付
+### Step 4: 執行被接受的修改
 
-將報告以 markdown 格式呈現給使用者。
+根據使用者的決定：
 
-如果使用者要存檔，建議存到：
-- skill-vault 使用者：`{vault}/.config/advisor-report-{YYYY-MM-DD}.md`
-- 一般使用者：使用者指定的路徑
+- **接受 remove**：將 skill 目錄移至 `~/.claude/skills/_inactive/`（備份，不是真刪）
+- **接受 merge**：修改兩個 skill 的 description，明確分工界線
+- **接受 trim**：精簡 description，保留觸發能力
+- **接受 conflict**：在兩個 skill 的 description 加入 disambiguation（NOT for 語句）
+- **修改**：使用者給方向，Claude 調整後執行
+
+每執行一個修改後，告知使用者完成，再呈現下一張 Card。
+
+### Step 5: 總結
+
+全部 Card 過完後，呈現總結：
+
+```
+✅ 完成 skill 清理
+
+執行了 N/M 項建議
+移除：X 個 skill（已備份至 _inactive/）
+精簡：Y 個 description
+解決衝突：Z 個
+預估省 token：~W 字/session
+```
 
 ## 注意事項
 
-- **不修改任何 SKILL.md**：本 skill 只讀不寫，所有建議由使用者決定是否執行
-- **信心度要誠實**：靜態分析有其限制，無法得知使用頻率。低信心就標低信心
-- **Token 估算是粗估**：基於 description 字數，實際注入量因 harness 配置而異
-- **graph-query 是選配**：Phase 1a 不強制依賴 Obsidian，沒有 graph-query 也能產出有價值的報告
+- **不直接刪除 skill**：移除操作是搬到 _inactive/ 備份，使用者可隨時搬回來
+- **語意分析用 Sonnet**：需要理解力判斷重疊，Haiku 不夠
+- **不改 skill 的功能邏輯**：只改 description 和 trigger，不碰 SKILL.md body
+- **使用者有最終決定權**：每個修改都要使用者確認

@@ -9,7 +9,7 @@
 | 指標 | JSON 路徑 | 健康範圍 | 不健康範圍 | 權重 |
 |------|-----------|---------|-----------|------|
 | 孤立率 | summary.orphanRate | <20% | >40% | 15% |
-| 功能重疊 | summary.overlapPairCount | 0-1 pair | >3 pairs | 15% |
+| 語意重疊 | 語意分析判定 | 0-1 pair | >3 pairs | 15% |
 | Eval 覆蓋率 | summary.evalCoverage | >50% | <20% | 20% |
 | 平均 Trigger 品質 | summary.avgTriggerScore | >3.5/5 | <2.5/5 | 20% |
 | Token 效率 | summary.totalDescriptionChars | <5000 (per 10 skills) | >10000 (per 10 skills) | 15% |
@@ -31,7 +31,7 @@
 |------|------|-----------|
 | 是孤立 skill（isOrphan = true） | 高 | +🔴 |
 | Trigger 分數 ≤ 2/5 | 中 | +🟡 |
-| 功能被其他 skill 覆蓋（overlap > 40%） | 高 | +🔴 |
+| 功能被其他 skill 覆蓋（語意分析判定） | 高 | +🔴 |
 | 無 eval 且無 reference | 中 | +🟡 |
 | description 過短（<50 字） | 低 | +⚪ |
 | [Phase 1b] 不是 bridge | 安全檢查 | 降低誤殺風險 |
@@ -44,7 +44,7 @@
 
 | 條件 | 必要/加分 |
 |------|----------|
-| 功能重疊度 > 40% | 必要 |
+| 功能實質重疊（語意分析判定） | 必要 |
 | 共享 CLI 依賴 | 加分 |
 | 同一個 group | 加分 |
 | [Phase 1b] 在同一個 cluster | 加分 |

@@ -1,0 +1,34 @@
+{
+  "skill_name": "skill-advisor",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "我裝了太多 skill，幫我整理一下",
+      "expected_output": "跑分析腳本、派 subagent 語意分析、產出 Action Cards 逐一互動",
+      "assertions": [
+        { "text": "執行 analyze-skills.mjs 收集資料", "type": "tool_use" },
+        { "text": "派 subagent 做語意分析", "type": "tool_use" },
+        { "text": "產出 Action Cards 格式的建議", "type": "output_quality" },
+        { "text": "等使用者逐一決定，不自動執行", "type": "output_quality" }
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "analyze skills",
+      "expected_output": "觸發 skill-advisor，執行完整分析流程",
+      "assertions": [
+        { "text": "正確觸發 skill-advisor", "type": "trigger" },
+        { "text": "掃描所有已安裝 skill", "type": "tool_use" }
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "skill 去重",
+      "expected_output": "觸發 skill-advisor，重點在找出重疊的 skill",
+      "assertions": [
+        { "text": "正確觸發 skill-advisor", "type": "trigger" },
+        { "text": "語意分析結果包含 merge 類型建議", "type": "output_quality" }
+      ]
+    }
+  ]
+}

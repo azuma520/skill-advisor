@@ -302,29 +302,6 @@ function checkTriggerQuality(description) {
   return { score, issues };
 }
 
-function detectOverlap(skills) {
-  const overlaps = [];
-  for (let i = 0; i < skills.length; i++) {
-    for (let j = i + 1; j < skills.length; j++) {
-      const a = skills[i];
-      const b = skills[j];
-      const aWords = new Set(a.description.toLowerCase().match(/\b\w{4,}\b/g) || []);
-      const bWords = new Set(b.description.toLowerCase().match(/\b\w{4,}\b/g) || []);
-      if (aWords.size === 0 || bWords.size === 0) continue;
-      const common = [...aWords].filter(w => bWords.has(w));
-      const ratio = common.length / Math.min(aWords.size, bWords.size);
-      if (ratio > 0.3 && common.length >= 5) {
-        overlaps.push({
-          skills: [a.name, b.name],
-          commonKeywords: common.slice(0, 10),
-          overlapRatio: Math.round(ratio * 100) + '%',
-        });
-      }
-    }
-  }
-  return overlaps;
-}
-
 // ── MOC Generator ────────────────────────────────────────────────
 function generateMoc(skills, referenceGraph, mocPath) {
   const lines = [];
@@ -395,7 +372,7 @@ function main() {
 
   if (skills.length === 0) {
     if (!jsonMode) console.log('No SKILL.md files found in', SCAN_ROOT);
-    else console.log(JSON.stringify({ generatedAt: new Date().toISOString(), scanRoot: SCAN_ROOT, summary: {}, skills: [], overlaps: [], referenceGraph: {} }, null, 2));
+    else console.log(JSON.stringify({ generatedAt: new Date().toISOString(), scanRoot: SCAN_ROOT, summary: {}, skills: [], referenceGraph: {} }, null, 2));
     return;
   }
 
@@ -438,8 +415,6 @@ function main() {
     skill.isOrphan = skill.skillRefs.length === 0 && inbound.length === 0;
   }
 
-  const overlaps = detectOverlap(skills);
-
   // Build reference graph output
   const referenceGraph = {};
   for (const skill of skills) {
@@ -471,7 +446,7 @@ function main() {
     avgTriggerScore,
     totalDescriptionChars,
     evalCoverage: `${evalCoverage}%`,
-    overlapPairCount: overlaps.length,
+    totalTokenEstimate: skills.reduce((sum, s) => sum + Math.ceil(s.description.length / 2), 0),
     refCoverage: `${refCoverage}%`,
   };
 
@@ -481,6 +456,7 @@ function main() {
     dirName: s.dirName,
     group: s.group,
     description: s.description,
+    descriptionTokenEstimate: Math.ceil(s.description.length / 2),
     triggerQuality: s.triggerQuality,
     tools: s.tools,
     cliDeps: s.cliDeps,
@@ -499,7 +475,6 @@ function main() {
     scanRoot: SCAN_ROOT,
     summary,
     skills: skillsOutput,
-    overlaps,
     referenceGraph,
   };
 
@@ -534,12 +509,6 @@ function main() {
       if (s.referencedBy.length) console.log(`  Referenced by: ${s.referencedBy.join(', ')}`);
       if (s.tools.length) console.log(`  Tools: ${s.tools.join(', ')}`);
       if (s.cliDeps.length) console.log(`  CLI deps: ${s.cliDeps.join(', ')}`);
-    }
-    if (overlaps.length) {
-      console.log('\n## Overlaps');
-      for (const o of overlaps) {
-        console.log(`  ${o.skills[0]} ↔ ${o.skills[1]} (${o.overlapRatio}): ${o.commonKeywords.join(', ')}`);
-      }
     }
   }
 }
